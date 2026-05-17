@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Life Journey</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent:   #c96442;  /* Claude coral/terracotta */
+      --accent2:  #a84f30;  /* darker coral for hover */
+      --bg:       #ede8df;  /* Claude warm cream */
+      --surface:  #f5f1ea;  /* card background */
+      --surface2: #e4ddd3;  /* pressed/inset surface */
+      --border:   #cfc6b8;  /* warm tan border */
+      --text:     #1c1410;  /* dark warm brown */
+      --muted:    #8b7d6b;  /* muted warm brown */
+      --cur:      #3d7a5e;  /* sage green for current month */
+    }
+
+    body {
+      font-family: 'Söhne', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 24px 100px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 52px;
+    }
+    .app-title {
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      color: var(--text);
+    }
+    .app-title strong { color: var(--accent); font-weight: 700; }
+    .app-sub {
+      color: var(--muted);
+      margin-top: 10px;
+      font-size: 0.8rem;
+      letter-spacing: 1.5px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .tb-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .tb-btn:hover {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--accent);
+    }
+    .tb-btn.primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .tb-btn.primary:hover { background: var(--accent2); border-color: var(--accent2); }
+    #importFile { display: none; }
+
+    /* ── Legend ─────────────────────────────────────────────── */
+    .legend {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-bottom: 36px;
+      flex-wrap: wrap;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .leg-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+    .leg-dot.empty  { background: var(--surface); border: 2px solid var(--border); }
+    .leg-dot.filled { background: var(--accent); }
+    .leg-dot.now    { background: var(--cur); }
+
+    /* ── Scroll wrapper ─────────────────────────────────────── */
+    .scroll-wrap { overflow-x: auto; padding-bottom: 12px; }
+
+    /* ── Timeline ───────────────────────────────────────────── */
+    .timeline {
+      min-width: 960px;
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    /* ── Year block ─────────────────────────────────────────── */
+    .year-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      padding: 20px 0 28px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+    .year-block:last-child { border-bottom: none; }
+
+    .year-label {
+      width: 62px;
+      flex-shrink: 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: right;
+      padding-top: 2px;
+      letter-spacing: -1px;
+      user-select: none;
+    }
+    .year-label.is-cur { color: var(--cur); }
+    .year-label.is-future { color: var(--muted); opacity: 0.55; }
+
+    .year-content { flex: 1; min-width: 0; }
+
+    /* ── Month track (line + dots + labels) ─────────────────── */
+    .months-track {
+      position: relative;
+    }
+
+    .track-line {
+      position: absolute;
+      top: 6px; /* half of 12px dot */
+      left: 7px;
+      right: 7px;
+      height: 1.5px;
+      background: linear-gradient(to right, var(--accent), var(--border));
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .months-row {
+      display: flex;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+    }
+
+    .month-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .month-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid var(--border);
+      transition: transform 0.15s, background 0.15s, box-shadow 0.15s, border-color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .month-col:hover .month-dot {
+      background: var(--accent);
+      border-color: var(--accent);
+      transform: scale(1.45);
+      box-shadow: 0 2px 8px rgba(201,100,66,0.35);
+    }
+
+    .month-dot.has-events {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 1px 6px rgba(201,100,66,0.3);
+    }
+
+    .month-dot.is-now {
+      background: var(--cur) !important;
+      border-color: var(--cur) !important;
+      box-shadow: 0 1px 8px rgba(61,122,94,0.35);
+    }
+
+    .month-name {
+      font-size: 8.5px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-top: 5px;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    .month-col:hover .month-name { color: var(--accent); }
+
+    .month-add-hint {
+      font-size: 8px;
+      color: transparent;
+      margin-top: 2px;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    .month-col:hover .month-add-hint { color: var(--muted); }
+
+    /* ── Events area ────────────────────────────────────────── */
+    .events-row {
+      display: flex;
+      width: 100%;
+      margin-top: 10px;
+      align-items: flex-start;
+    }
+
+    .events-cell {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 3px;
+      padding: 0 2px;
+    }
+
+    .event-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--accent);
+      border-radius: 4px;
+      padding: 4px 18px 4px 7px;
+      font-size: 10px;
+      color: var(--text);
+      line-height: 1.35;
+      word-break: break-word;
+      position: relative;
+      cursor: default;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .event-chip:hover {
+      background: var(--surface2);
+      border-color: var(--accent);
+    }
+
+    .chip-del {
+      position: absolute;
+      top: 1px;
+      right: 3px;
+      color: #b85a4a;
+      font-size: 14px;
+      line-height: 1.4;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+    .event-chip:hover .chip-del { opacity: 1; }
+
+    /* ── Modal ──────────────────────────────────────────────── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(28,20,16,0.45);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 30px 24px;
+      width: 440px;
+      max-width: 94vw;
+      box-shadow: 0 16px 48px rgba(28,20,16,0.18), 0 2px 8px rgba(28,20,16,0.10);
+    }
+
+    .modal-date {
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .modal-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 18px;
+    }
+
+    .modal-existing {
+      margin-bottom: 14px;
+    }
+
+    .modal-existing-title {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .modal-evt-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      background: var(--surface2);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 4px;
+      border-left: 2px solid var(--accent);
+    }
+    .modal-evt-text { flex: 1; word-break: break-word; }
+    .modal-evt-del {
+      color: #b85a4a;
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1;
+      flex-shrink: 0;
+      padding-top: 1px;
+    }
+
+    .modal textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13.5px;
+      padding: 11px 13px;
+      min-height: 80px;
+      max-height: 200px;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .modal textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(201,100,66,0.12);
+    }
+    .modal textarea::placeholder { color: var(--muted); }
+
+    .modal-hint {
+      font-size: 10px;
+      color: var(--border);
+      margin-top: 5px;
+      text-align: right;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      padding: 9px 22px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      font-weight: 600;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .btn-save   { background: var(--accent); color: #fff; }
+    .btn-save:hover {
+      background: var(--accent2);
+      box-shadow: 0 2px 8px rgba(201,100,66,0.3);
+    }
+    .btn-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-cancel:hover { background: var(--surface2); color: var(--text); }
+
+    /* ── Scrollbar ──────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="app-title">Life <strong>Journey</strong></div>
+  <div class="app-sub">Click any month to record a life event</div>
+  <div class="toolbar">
+    <button class="tb-btn primary" onclick="exportData()">&#8595; Export JSON</button>
+    <button class="tb-btn" onclick="document.getElementById('importFile').click()">&#8593; Import JSON</button>
+    <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+  </div>
+</header>
+
+<div class="legend">
+  <div class="legend-item"><div class="leg-dot empty"></div> No events</div>
+  <div class="legend-item"><div class="leg-dot filled"></div> Has events</div>
+  <div class="legend-item"><div class="leg-dot now"></div> This month</div>
+</div>
+
+<div class="scroll-wrap">
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal">
+    <div class="modal-date" id="mDate"></div>
+    <div class="modal-title" id="mTitle"></div>
+    <div class="modal-existing" id="mExisting" style="display:none">
+      <div class="modal-existing-title">Recorded events</div>
+      <div id="mEventList"></div>
+    </div>
+    <textarea id="mInput" placeholder="Describe this life event…" rows="3"></textarea>
+    <div class="modal-hint">Ctrl + Enter to save</div>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" id="mCancel">Cancel</button>
+      <button class="btn btn-save"   id="mSave">Add Event</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const MONTHS_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const START = 2001, END = 2026;
+  const now = new Date();
+  const CUR_Y = now.getFullYear(), CUR_M = now.getMonth();
+
+  /* ── Storage ────────────────────────────────────────────── */
+  const STORE_KEY = 'lifeJourney_v1';
+  let db = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+  const key = (y, m) => `${y}:${m}`;
+
+  function persist() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(db));
+  }
+
+  function exportData() {
+    const json = JSON.stringify(db, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'life-journey-events.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        db = parsed;
+        persist();
+        render();
+        e.target.value = '';
+      } catch {
+        alert('Invalid JSON file — please choose a valid life-journey export.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  /* ── Modal state ─────────────────────────────────────────── */
+  let activeYear = null, activeMonth = null;
+
+  const overlay  = document.getElementById('overlay');
+  const mDate    = document.getElementById('mDate');
+  const mTitle   = document.getElementById('mTitle');
+  const mExisting= document.getElementById('mExisting');
+  const mList    = document.getElementById('mEventList');
+  const mInput   = document.getElementById('mInput');
+
+  function openModal(y, m) {
+    activeYear = y; activeMonth = m;
+    const k = key(y, m);
+    mDate.textContent  = y;
+    mTitle.textContent = MONTHS_FULL[m];
+    mInput.value = '';
+
+    const evts = db[k] || [];
+    if (evts.length) {
+      mList.innerHTML = '';
+      evts.forEach((txt, i) => {
+        const row = document.createElement('div');
+        row.className = 'modal-evt-item';
+
+        const span = document.createElement('div');
+        span.className = 'modal-evt-text';
+        span.textContent = txt;
+
+        const del = document.createElement('span');
+        del.className = 'modal-evt-del';
+        del.title = 'Delete';
+        del.textContent = '×';
+        del.addEventListener('click', () => {
+          db[k].splice(i, 1);
+          if (!db[k].length) delete db[k];
+          persist();
+          render();
+          openModal(y, m); // refresh modal
+        });
+
+        row.appendChild(span);
+        row.appendChild(del);
+        mList.appendChild(row);
+      });
+      mExisting.style.display = 'block';
+    } else {
+      mExisting.style.display = 'none';
+    }
+
+    overlay.classList.add('open');
+    setTimeout(() => mInput.focus(), 60);
+  }
+
+  function closeModal() {
+    overlay.classList.remove('open');
+    activeYear = activeMonth = null;
+  }
+
+  function addEvent() {
+    const txt = mInput.value.trim();
+    if (!txt || activeYear === null) return;
+    const k = key(activeYear, activeMonth);
+    if (!db[k]) db[k] = [];
+    db[k].push(txt);
+    persist();
+    render();
+    closeModal();
+  }
+
+  /* ── Event listeners ─────────────────────────────────────── */
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
+  document.getElementById('mCancel').addEventListener('click', closeModal);
+  document.getElementById('mSave').addEventListener('click', addEvent);
+  mInput.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeModal(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') addEvent();
+  });
+
+  /* ── Render ──────────────────────────────────────────────── */
+  function render() {
+    const tl = document.getElementById('timeline');
+    tl.innerHTML = '';
+
+    for (let y = START; y <= END; y++) {
+      const isCurYear    = y === CUR_Y;
+      const isFutureYear = y > CUR_Y;
+
+      /* Year block */
+      const block = document.createElement('div');
+      block.className = 'year-block';
+
+      /* Year label */
+      const lbl = document.createElement('div');
+      lbl.className = 'year-label' +
+        (isCurYear ? ' is-cur' : isFutureYear ? ' is-future' : '');
+      lbl.textContent = y;
+      block.appendChild(lbl);
+
+      /* Content column */
+      const content = document.createElement('div');
+      content.className = 'year-content';
+
+      /* Month track */
+      const track = document.createElement('div');
+      track.className = 'months-track';
+
+      const line = document.createElement('div');
+      line.className = 'track-line';
+      track.appendChild(line);
+
+      const mrow = document.createElement('div');
+      mrow.className = 'months-row';
+
+      for (let m = 0; m < 12; m++) {
+        const k       = key(y, m);
+        const hasEvts = (db[k]?.length || 0) > 0;
+        const isNow   = isCurYear && m === CUR_M;
+
+        const col = document.createElement('div');
+        col.className = 'month-col';
+        col.title = `${MONTHS_FULL[m]} ${y} — click to add event`;
+        col.addEventListener('click', () => openModal(y, m));
+
+        const dot = document.createElement('div');
+        dot.className = 'month-dot' +
+          (isNow ? ' is-now' : hasEvts ? ' has-events' : '');
+
+        const mn = document.createElement('div');
+        mn.className = 'month-name';
+        mn.textContent = MONTHS_SHORT[m];
+
+        const hint = document.createElement('div');
+        hint.className = 'month-add-hint';
+        hint.textContent = '+ add';
+
+        col.appendChild(dot);
+        col.appendChild(mn);
+        col.appendChild(hint);
+        mrow.appendChild(col);
+      }
+
+      track.appendChild(mrow);
+      content.appendChild(track);
+
+      /* Events row (chips under each month) */
+      const erow = document.createElement('div');
+      erow.className = 'events-row';
+
+      let anyEvents = false;
+      for (let m = 0; m < 12; m++) {
+        const cell = document.createElement('div');
+        cell.className = 'events-cell';
+
+        const k = key(y, m);
+        if (db[k]) {
+          anyEvents = true;
+          db[k].forEach((txt, i) => {
+            const chip = document.createElement('div');
+            chip.className = 'event-chip';
+
+            const span = document.createElement('span');
+            span.textContent = txt;
+
+            const del = document.createElement('span');
+            del.className = 'chip-del';
+            del.textContent = '×';
+            del.title = 'Delete event';
+            del.addEventListener('click', e => {
+              e.stopPropagation();
+              db[k].splice(i, 1);
+              if (!db[k].length) delete db[k];
+              persist();
+              render();
+            });
+
+            chip.appendChild(span);
+            chip.appendChild(del);
+            cell.appendChild(chip);
+          });
+        }
+        erow.appendChild(cell);
+      }
+
+      if (anyEvents) content.appendChild(erow);
+
+      block.appendChild(content);
+      tl.appendChild(block);
+    }
+  }
+
+  render();
+</script>
+</body>
+</html>
