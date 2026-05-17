@@ -592,28 +592,77 @@
 
   let ghToken = localStorage.getItem(GH_KEY) || null;
   let ghSha   = null;
+  let cryptoKey = null; // AES-GCM key derived from token
 
+  // GitHub base64 helpers (for API content field, not crypto)
   const toB64   = s => btoa(encodeURIComponent(s).replace(/%([0-9A-F]{2})/g, (_, p) => String.fromCharCode(parseInt(p, 16))));
   const fromB64 = b => decodeURIComponent(Array.from(atob(b.replace(/\n/g,'')), c => '%' + c.charCodeAt(0).toString(16).padStart(2,'0')).join(''));
 
   const ghHeaders = () => ({ Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json' });
 
+  /* ── AES-GCM encryption (Web Crypto API) ─────────────────── */
+  const SALT = new TextEncoder().encode('life-journey-v1-salt');
+
+  async function deriveKey(token) {
+    const raw = await crypto.subtle.importKey('raw', new TextEncoder().encode(token), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: SALT, iterations: 200000, hash: 'SHA-256' },
+      raw,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async function encryptData(obj) {
+    const iv   = crypto.getRandomValues(new Uint8Array(12));
+    const enc  = new TextEncoder().encode(JSON.stringify(obj));
+    const ciph = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, enc);
+    const buf  = new Uint8Array(iv.byteLength + ciph.byteLength);
+    buf.set(iv); buf.set(new Uint8Array(ciph), iv.byteLength);
+    return btoa(String.fromCharCode(...buf));
+  }
+
+  async function decryptData(b64) {
+    const buf  = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv   = buf.slice(0, 12);
+    const ciph = buf.slice(12);
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciph);
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+
+  /* ── GitHub load / save ──────────────────────────────────── */
   async function ghLoad() {
     const res = await fetch(GH_API, { headers: ghHeaders() });
     if (res.status === 401 || res.status === 403) throw new Error('invalid_token');
     if (res.status === 404) { ghSha = null; return; }
     if (!res.ok) throw new Error('fetch_failed');
-    const data = await res.json();
-    ghSha = data.sha;
-    const remote = JSON.parse(fromB64(data.content));
-    if (Object.keys(remote).length) { db = remote; localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+    const data   = await res.json();
+    ghSha        = data.sha;
+    const raw    = fromB64(data.content);        // GitHub base64 → string
+    const parsed = JSON.parse(raw);
+    if (parsed.encrypted) {
+      // Encrypted format — decrypt with derived key
+      try {
+        db = await decryptData(parsed.encrypted);
+      } catch (_) {
+        throw new Error('wrong_key');
+      }
+    } else if (Object.keys(parsed).length) {
+      // Legacy plaintext — load and immediately re-save encrypted
+      db = parsed;
+      await ghSave();
+    }
+    localStorage.setItem(STORE_KEY, JSON.stringify(db));
   }
 
   async function ghSave() {
-    if (!ghToken) return;
+    if (!ghToken || !cryptoKey) return;
+    const encrypted = await encryptData(db);
+    const payload   = JSON.stringify({ encrypted });           // {"encrypted":"<base64>"}
     const body = {
       message: `Life events ${new Date().toISOString().slice(0,10)}`,
-      content: toB64(JSON.stringify(db, null, 2)),
+      content: toB64(payload),
       ...(ghSha ? { sha: ghSha } : {})
     };
     try {
@@ -630,7 +679,7 @@
 
   /* ── Lock / Unlock ───────────────────────────────────────── */
   function showApp()  { document.getElementById('lockScreen').style.display = 'none';  document.getElementById('appShell').style.display = 'block'; }
-  function showLock() { document.getElementById('appShell').style.display = 'none';   document.getElementById('lockScreen').style.display = 'flex'; }
+  function showLock() { document.getElementById('appShell').style.display  = 'none';  document.getElementById('lockScreen').style.display = 'flex'; }
 
   async function unlockWithToken() {
     const token = document.getElementById('lockInput').value.trim();
@@ -638,20 +687,22 @@
     const btn = document.getElementById('lockBtn');
     btn.textContent = 'Unlocking…'; btn.disabled = true;
     try {
-      ghToken = token;
+      ghToken   = token;
+      cryptoKey = await deriveKey(token);
       await ghLoad();
       localStorage.setItem(GH_KEY, ghToken);
       render();
       showApp();
     } catch (e) {
-      ghToken = null;
-      showToast(e.message === 'invalid_token' ? 'Invalid token — check permissions' : 'Could not reach GitHub', true);
+      ghToken = null; cryptoKey = null;
+      const msg = { invalid_token: 'Invalid token — check permissions', wrong_key: 'Wrong passphrase — data cannot be decrypted' }[e.message] || 'Could not reach GitHub';
+      showToast(msg, true);
     }
     btn.textContent = 'Unlock'; btn.disabled = false;
   }
 
   function lockApp() {
-    ghToken = null; ghSha = null;
+    ghToken = null; ghSha = null; cryptoKey = null;
     localStorage.removeItem(GH_KEY);
     db = {};
     document.getElementById('lockInput').value = '';
@@ -796,8 +847,11 @@
 
   /* ── Init ────────────────────────────────────────────────── */
   if (ghToken) {
-    ghLoad().then(() => { render(); showApp(); }).catch(() => {
-      ghToken = null; localStorage.removeItem(GH_KEY); showLock();
+    deriveKey(ghToken).then(k => {
+      cryptoKey = k;
+      return ghLoad();
+    }).then(() => { render(); showApp(); }).catch(() => {
+      ghToken = null; cryptoKey = null; localStorage.removeItem(GH_KEY); showLock();
     });
   } else {
     showLock();
