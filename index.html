@@ -471,9 +471,10 @@
       <span>Syncing to <strong>utishrajk/life-events</strong> · events.json</span>
     </div>
     <div class="gh-modal-body" id="ghInstructions">
-      Your events will be saved to <code>events.json</code> in your
-      <strong>utishrajk/life-events</strong> repo — readable from any browser.<br><br>
-      To connect, create a token at<br>
+      Events are stored in <code>events.json</code> in the public repo
+      <strong>utishrajk/life-events</strong> and load automatically for
+      anyone visiting this page — no token needed to view.<br><br>
+      To <strong>add or edit</strong> events, connect with a token:<br>
       <a href="https://github.com/settings/tokens/new" target="_blank">
         github.com/settings/tokens/new
       </a><br>
@@ -552,21 +553,19 @@
   const fromB64 = b => decodeURIComponent(Array.from(atob(b.replace(/\n/g,'')), c => '%' + c.charCodeAt(0).toString(16).padStart(2,'0')).join(''));
 
   async function ghLoad() {
-    if (!ghToken) return;
+    // Public repo: no token needed to read. Token only needed to write.
     try {
-      const res = await fetch(GH_API, {
-        headers: { Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json' }
-      });
+      const headers = { Accept: 'application/vnd.github.v3+json' };
+      if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
+      const res = await fetch(GH_API, { headers });
       if (res.status === 401 || res.status === 403) {
-        ghToken = null; localStorage.removeItem(GH_KEY);
-        updateGhBtn(); return;
+        ghToken = null; localStorage.removeItem(GH_KEY); updateGhBtn(); return;
       }
-      if (res.status === 404) { ghSha = null; return; } // file not yet created
+      if (res.status === 404) { ghSha = null; return; }
       if (!res.ok) return;
       const data = await res.json();
       ghSha = data.sha;
       const remote = JSON.parse(fromB64(data.content));
-      // Merge: remote wins, but keep any local-only keys not yet synced
       db = Object.keys(remote).length ? remote : db;
       localStorage.setItem(STORE_KEY, JSON.stringify(db));
     } catch (_) {}
