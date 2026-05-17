@@ -435,6 +435,62 @@
     .gh-dot.on  { background: var(--cur); }
     .gh-dot.off { background: var(--border); }
 
+    /* ── Lock screen ─────────────────────────────────────────── */
+    #lockScreen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      gap: 0;
+    }
+    .lock-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 44px 36px;
+      width: 400px;
+      max-width: 92vw;
+      box-shadow: 0 8px 32px rgba(28,20,16,0.10);
+      text-align: center;
+    }
+    .lock-icon { font-size: 2rem; margin-bottom: 14px; }
+    .lock-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .lock-sub   { font-size: 12px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+    .lock-sub a { color: var(--accent); }
+    .lock-sub code {
+      background: var(--surface2); padding: 1px 5px;
+      border-radius: 4px; font-size: 11px;
+    }
+    .lock-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 11px 13px;
+      font-family: monospace;
+      outline: none;
+      text-align: center;
+      letter-spacing: 1px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      margin-bottom: 12px;
+    }
+    .lock-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(201,100,66,0.12);
+    }
+    .lock-input::placeholder { letter-spacing: 0; color: var(--muted); font-family: inherit; }
+    .lock-btn {
+      width: 100%; padding: 11px;
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 8px;
+      font-size: 13px; font-family: inherit; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .lock-btn:hover { background: var(--accent2); }
+
     /* ── Toast ───────────────────────────────────────────────── */
     .toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -451,58 +507,47 @@
 </head>
 <body>
 
-<header>
-  <div class="app-title">Life <strong>Journey</strong></div>
-  <div class="app-sub">Click any month to record a life event</div>
-  <div class="toolbar">
-    <button class="tb-btn primary" onclick="exportData()">&#8595; Export JSON</button>
-    <button class="tb-btn" onclick="document.getElementById('importFile').click()">&#8593; Import JSON</button>
-    <input type="file" id="importFile" accept=".json" onchange="importData(event)">
-    <button class="tb-btn" id="ghBtn" onclick="openGhModal()">&#9729; GitHub Sync</button>
-  </div>
-</header>
-
-<!-- GitHub sync modal -->
-<div class="overlay" id="ghOverlay">
-  <div class="modal">
-    <div class="modal-title" id="ghModalTitle">Connect GitHub Sync</div>
-    <div id="ghConnectedRow" class="gh-status-row" style="display:none">
-      <span class="gh-dot on"></span>
-      <span>Syncing to <strong>utishrajk/life-events</strong> · events.json</span>
+<!-- Lock screen (shown when no token) -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <div class="lock-icon">🔒</div>
+    <div class="lock-title">Life Journey</div>
+    <div class="lock-sub">
+      Enter your GitHub token to unlock your timeline.<br>
+      Need a token? <a href="https://github.com/settings/tokens/new" target="_blank">Create one</a>
+      with <code>repo</code> scope.
     </div>
-    <div class="gh-modal-body" id="ghInstructions">
-      Events are stored in <code>events.json</code> in the public repo
-      <strong>utishrajk/life-events</strong> and load automatically for
-      anyone visiting this page — no token needed to view.<br><br>
-      To <strong>add or edit</strong> events, connect with a token:<br>
-      <a href="https://github.com/settings/tokens/new" target="_blank">
-        github.com/settings/tokens/new
-      </a><br>
-      with <code>repo</code> scope (or fine-grained: <code>Contents → Read &amp; Write</code>
-      for the life-events repo).
-    </div>
-    <input class="gh-input" type="password" id="ghTokenInput" placeholder="ghp_xxxxxxxxxxxxxxxx">
-    <div class="modal-hint" id="ghInputHint">Token is stored only in this browser's localStorage</div>
-    <div class="modal-actions">
-      <button class="btn btn-cancel" id="ghDisconnectBtn" style="display:none;color:#b85a4a" onclick="disconnectGh()">Disconnect</button>
-      <button class="btn btn-cancel" onclick="closeGhModal()">Cancel</button>
-      <button class="btn btn-save"   id="ghConnectBtn" onclick="connectGh()">Connect</button>
-    </div>
+    <input class="lock-input" type="password" id="lockInput" placeholder="ghp_xxxxxxxxxxxxxxxx" autofocus>
+    <button class="lock-btn" id="lockBtn" onclick="unlockWithToken()">Unlock</button>
   </div>
 </div>
+
+<!-- Main app (hidden until unlocked) -->
+<div id="appShell" style="display:none">
+  <header>
+    <div class="app-title">Life <strong>Journey</strong></div>
+    <div class="app-sub">Click any month to record a life event</div>
+    <div class="toolbar">
+      <button class="tb-btn primary" onclick="exportData()">&#8595; Export JSON</button>
+      <button class="tb-btn" onclick="document.getElementById('importFile').click()">&#8593; Import JSON</button>
+      <input type="file" id="importFile" accept=".json" onchange="importData(event)">
+      <button class="tb-btn gh-on" onclick="lockApp()">🔓 Lock</button>
+    </div>
+  </header>
+
+  <div class="legend">
+    <div class="legend-item"><div class="leg-dot empty"></div> No events</div>
+    <div class="legend-item"><div class="leg-dot filled"></div> Has events</div>
+    <div class="legend-item"><div class="leg-dot now"></div> This month</div>
+  </div>
+
+  <div class="scroll-wrap">
+    <div class="timeline" id="timeline"></div>
+  </div>
+</div><!-- end appShell -->
 
 <!-- Toast -->
 <div class="toast" id="toast"></div>
-
-<div class="legend">
-  <div class="legend-item"><div class="leg-dot empty"></div> No events</div>
-  <div class="legend-item"><div class="leg-dot filled"></div> Has events</div>
-  <div class="legend-item"><div class="leg-dot now"></div> This month</div>
-</div>
-
-<div class="scroll-wrap">
-  <div class="timeline" id="timeline"></div>
-</div>
 
 <!-- Modal -->
 <div class="overlay" id="overlay">
@@ -540,35 +585,28 @@
   }
 
   /* ── GitHub API ──────────────────────────────────────────── */
-  const GH_REPO  = 'utishrajk/life-events';
-  const GH_FILE  = 'events.json';
-  const GH_API   = `https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`;
-  const GH_KEY   = 'gh_pat_v1';
+  const GH_REPO = 'utishrajk/life-events';
+  const GH_FILE = 'events.json';
+  const GH_API  = `https://api.github.com/repos/${GH_REPO}/contents/${GH_FILE}`;
+  const GH_KEY  = 'gh_pat_v1';
 
   let ghToken = localStorage.getItem(GH_KEY) || null;
-  let ghSha   = null; // current file SHA needed for PUT
+  let ghSha   = null;
 
-  // Unicode-safe base64 helpers
   const toB64   = s => btoa(encodeURIComponent(s).replace(/%([0-9A-F]{2})/g, (_, p) => String.fromCharCode(parseInt(p, 16))));
   const fromB64 = b => decodeURIComponent(Array.from(atob(b.replace(/\n/g,'')), c => '%' + c.charCodeAt(0).toString(16).padStart(2,'0')).join(''));
 
+  const ghHeaders = () => ({ Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json' });
+
   async function ghLoad() {
-    // Public repo: no token needed to read. Token only needed to write.
-    try {
-      const headers = { Accept: 'application/vnd.github.v3+json' };
-      if (ghToken) headers.Authorization = `Bearer ${ghToken}`;
-      const res = await fetch(GH_API, { headers });
-      if (res.status === 401 || res.status === 403) {
-        ghToken = null; localStorage.removeItem(GH_KEY); updateGhBtn(); return;
-      }
-      if (res.status === 404) { ghSha = null; return; }
-      if (!res.ok) return;
-      const data = await res.json();
-      ghSha = data.sha;
-      const remote = JSON.parse(fromB64(data.content));
-      db = Object.keys(remote).length ? remote : db;
-      localStorage.setItem(STORE_KEY, JSON.stringify(db));
-    } catch (_) {}
+    const res = await fetch(GH_API, { headers: ghHeaders() });
+    if (res.status === 401 || res.status === 403) throw new Error('invalid_token');
+    if (res.status === 404) { ghSha = null; return; }
+    if (!res.ok) throw new Error('fetch_failed');
+    const data = await res.json();
+    ghSha = data.sha;
+    const remote = JSON.parse(fromB64(data.content));
+    if (Object.keys(remote).length) { db = remote; localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
   }
 
   async function ghSave() {
@@ -579,108 +617,49 @@
       ...(ghSha ? { sha: ghSha } : {})
     };
     try {
-      let res = await fetch(GH_API, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${ghToken}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
-      // On SHA conflict, refresh sha and retry once
+      let res = await fetch(GH_API, { method:'PUT', headers:{...ghHeaders(),'Content-Type':'application/json'}, body: JSON.stringify(body) });
       if (res.status === 409 || res.status === 422) {
-        const cur = await fetch(GH_API, { headers: { Authorization: `Bearer ${ghToken}` } });
+        const cur = await fetch(GH_API, { headers: ghHeaders() });
         if (cur.ok) { ghSha = (await cur.json()).sha; body.sha = ghSha; }
-        res = await fetch(GH_API, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${ghToken}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        res = await fetch(GH_API, { method:'PUT', headers:{...ghHeaders(),'Content-Type':'application/json'}, body: JSON.stringify(body) });
       }
-      if (res.ok) {
-        ghSha = (await res.json()).content.sha;
-        showToast('Synced to GitHub ✓');
-      } else {
-        showToast('GitHub sync failed', true);
-      }
+      if (res.ok) { ghSha = (await res.json()).content.sha; showToast('Synced ✓'); }
+      else showToast('GitHub sync failed', true);
     } catch (_) { showToast('GitHub sync failed', true); }
   }
 
-  /* ── GitHub modal ────────────────────────────────────────── */
-  function updateGhBtn() {
-    const btn = document.getElementById('ghBtn');
-    btn.className = 'tb-btn' + (ghToken ? ' gh-on' : '');
-    btn.textContent = ghToken ? '✓ GitHub Synced' : '☁ GitHub Sync';
-  }
+  /* ── Lock / Unlock ───────────────────────────────────────── */
+  function showApp()  { document.getElementById('lockScreen').style.display = 'none';  document.getElementById('appShell').style.display = 'block'; }
+  function showLock() { document.getElementById('appShell').style.display = 'none';   document.getElementById('lockScreen').style.display = 'flex'; }
 
-  function openGhModal() {
-    const hasToken = !!ghToken;
-    document.getElementById('ghConnectedRow').style.display  = hasToken ? 'flex'  : 'none';
-    document.getElementById('ghInstructions').style.display  = hasToken ? 'none'  : 'block';
-    document.getElementById('ghTokenInput').style.display    = hasToken ? 'none'  : 'block';
-    document.getElementById('ghInputHint').style.display     = hasToken ? 'none'  : 'block';
-    document.getElementById('ghConnectBtn').style.display    = hasToken ? 'none'  : 'inline-flex';
-    document.getElementById('ghDisconnectBtn').style.display = hasToken ? 'inline-flex' : 'none';
-    document.getElementById('ghModalTitle').textContent = hasToken ? 'GitHub Sync' : 'Connect GitHub Sync';
-    document.getElementById('ghTokenInput').value = '';
-    document.getElementById('ghOverlay').classList.add('open');
-    if (!hasToken) setTimeout(() => document.getElementById('ghTokenInput').focus(), 60);
-  }
-
-  function closeGhModal() {
-    document.getElementById('ghOverlay').classList.remove('open');
-  }
-
-  async function connectGh() {
-    const token = document.getElementById('ghTokenInput').value.trim();
+  async function unlockWithToken() {
+    const token = document.getElementById('lockInput').value.trim();
     if (!token) return;
-    // Validate token by hitting the API
-    const btn = document.getElementById('ghConnectBtn');
-    btn.textContent = 'Connecting…'; btn.disabled = true;
+    const btn = document.getElementById('lockBtn');
+    btn.textContent = 'Unlocking…'; btn.disabled = true;
     try {
-      const res = await fetch(GH_API, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' }
-      });
-      if (res.status === 401 || res.status === 403) {
-        showToast('Invalid token — check permissions', true);
-        btn.textContent = 'Connect'; btn.disabled = false; return;
-      }
       ghToken = token;
+      await ghLoad();
       localStorage.setItem(GH_KEY, ghToken);
-      if (res.ok) {
-        const data = await res.json();
-        ghSha = data.sha;
-        db = JSON.parse(fromB64(data.content));
-        localStorage.setItem(STORE_KEY, JSON.stringify(db));
-        render();
-      }
-      // Push current local data if remote was empty
-      if (res.status === 404) await ghSave();
-      updateGhBtn();
-      closeGhModal();
-      showToast('Connected! Syncing to GitHub ✓');
-    } catch (_) {
-      showToast('Connection failed', true);
+      render();
+      showApp();
+    } catch (e) {
+      ghToken = null;
+      showToast(e.message === 'invalid_token' ? 'Invalid token — check permissions' : 'Could not reach GitHub', true);
     }
-    btn.textContent = 'Connect'; btn.disabled = false;
+    btn.textContent = 'Unlock'; btn.disabled = false;
   }
 
-  function disconnectGh() {
+  function lockApp() {
     ghToken = null; ghSha = null;
     localStorage.removeItem(GH_KEY);
-    updateGhBtn();
-    closeGhModal();
-    showToast('Disconnected from GitHub');
+    db = {};
+    document.getElementById('lockInput').value = '';
+    showLock();
+    showToast('Locked');
   }
 
-  document.getElementById('ghOverlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('ghOverlay')) closeGhModal();
-  });
-  document.getElementById('ghTokenInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter') connectGh();
-    if (e.key === 'Escape') closeGhModal();
-  });
+  document.getElementById('lockInput').addEventListener('keydown', e => { if (e.key === 'Enter') unlockWithToken(); });
 
   /* ── Toast ───────────────────────────────────────────────── */
   let toastTimer;
@@ -816,8 +795,13 @@
   }
 
   /* ── Init ────────────────────────────────────────────────── */
-  updateGhBtn();
-  ghLoad().then(render); // load from GitHub if connected, then render
+  if (ghToken) {
+    ghLoad().then(() => { render(); showApp(); }).catch(() => {
+      ghToken = null; localStorage.removeItem(GH_KEY); showLock();
+    });
+  } else {
+    showLock();
+  }
 </script>
 </body>
 </html>
