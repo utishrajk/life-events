@@ -510,15 +510,26 @@
 <!-- Lock screen (shown when no token) -->
 <div id="lockScreen">
   <div class="lock-card">
-    <div class="lock-icon">🔒</div>
-    <div class="lock-title">Life Journey</div>
-    <div class="lock-sub">
+    <div class="lock-icon" id="lockIcon">🔒</div>
+    <div class="lock-title" id="lockTitle">Life Journey</div>
+    <div class="lock-sub" id="lockSub">
       Enter your GitHub token to unlock your timeline.<br>
       Need a token? <a href="https://github.com/settings/tokens/new" target="_blank">Create one</a>
       with <code>repo</code> scope.
     </div>
     <input class="lock-input" type="password" id="lockInput" placeholder="ghp_xxxxxxxxxxxxxxxx" autofocus>
     <button class="lock-btn" id="lockBtn" onclick="unlockWithToken()">Unlock</button>
+
+    <!-- Shown only after wrong-passphrase error -->
+    <div id="resetSection" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:18px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6;">
+        Your data is encrypted with a different token.<br>
+        Import your backup JSON to reset with the new token.
+      </div>
+      <input type="file" id="resetFile" accept=".json" style="display:none" onchange="resetWithBackup(event)">
+      <button class="lock-btn" onclick="document.getElementById('resetFile').click()"
+        style="background:var(--muted)">&#8593; Import Backup &amp; Reset</button>
+    </div>
   </div>
 </div>
 
@@ -638,18 +649,16 @@
     if (res.status === 404) { ghSha = null; return; }
     if (!res.ok) throw new Error('fetch_failed');
     const data   = await res.json();
-    ghSha        = data.sha;
-    const raw    = fromB64(data.content);        // GitHub base64 → string
+    ghSha        = data.sha; // always save sha — needed even if decryption fails
+    const raw    = fromB64(data.content);
     const parsed = JSON.parse(raw);
     if (parsed.encrypted) {
-      // Encrypted format — decrypt with derived key
       try {
         db = await decryptData(parsed.encrypted);
       } catch (_) {
-        throw new Error('wrong_key');
+        throw new Error('wrong_key'); // sha is already saved above for reset
       }
     } else if (Object.keys(parsed).length) {
-      // Legacy plaintext — load and immediately re-save encrypted
       db = parsed;
       await ghSave();
     }
@@ -694,11 +703,40 @@
       render();
       showApp();
     } catch (e) {
-      ghToken = null; cryptoKey = null;
-      const msg = { invalid_token: 'Invalid token — check permissions', wrong_key: 'Wrong passphrase — data cannot be decrypted' }[e.message] || 'Could not reach GitHub';
-      showToast(msg, true);
+      if (e.message === 'wrong_key') {
+        // Token is valid but data encrypted with different token — show reset option
+        // ghSha is already saved so resetWithBackup can overwrite the file
+        document.getElementById('resetSection').style.display = 'block';
+        showToast('Data encrypted with a different token — import your backup below', true);
+      } else {
+        ghToken = null; cryptoKey = null;
+        const msg = { invalid_token: 'Invalid token — check permissions' }[e.message] || 'Could not reach GitHub';
+        showToast(msg, true);
+      }
     }
     btn.textContent = 'Unlock'; btn.disabled = false;
+  }
+
+  function resetWithBackup(e) {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      try {
+        db = JSON.parse(ev.target.result);
+        // ghSha already set from the failed ghLoad — overwrite the encrypted file
+        await ghSave();
+        localStorage.setItem(GH_KEY, ghToken);
+        localStorage.setItem(STORE_KEY, JSON.stringify(db));
+        document.getElementById('resetSection').style.display = 'none';
+        render();
+        showApp();
+        showToast('Data restored and re-encrypted ✓');
+      } catch (_) {
+        showToast('Failed to restore — invalid backup file', true);
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
   }
 
   function lockApp() {
