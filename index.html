@@ -668,22 +668,41 @@
   async function ghSave() {
     if (!ghToken || !cryptoKey) return;
     const encrypted = await encryptData(db);
-    const payload   = JSON.stringify({ encrypted });           // {"encrypted":"<base64>"}
-    const body = {
+    const payload   = JSON.stringify({ encrypted });
+    const buildBody = () => ({
       message: `Life events ${new Date().toISOString().slice(0,10)}`,
       content: toB64(payload),
       ...(ghSha ? { sha: ghSha } : {})
-    };
+    });
+    const put = body => fetch(GH_API, {
+      method: 'PUT',
+      headers: { ...ghHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
     try {
-      let res = await fetch(GH_API, { method:'PUT', headers:{...ghHeaders(),'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      let res = await put(buildBody());
+
+      // SHA mismatch or stale-file: refresh SHA (or null if deleted) and retry once
       if (res.status === 409 || res.status === 422) {
         const cur = await fetch(GH_API, { headers: ghHeaders() });
-        if (cur.ok) { ghSha = (await cur.json()).sha; body.sha = ghSha; }
-        res = await fetch(GH_API, { method:'PUT', headers:{...ghHeaders(),'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        if (cur.ok)              ghSha = (await cur.json()).sha;
+        else if (cur.status === 404) ghSha = null;
+        res = await put(buildBody());
       }
-      if (res.ok) { ghSha = (await res.json()).content.sha; showToast('Synced ✓'); }
-      else showToast('GitHub sync failed', true);
-    } catch (_) { showToast('GitHub sync failed', true); }
+
+      if (res.ok) {
+        ghSha = (await res.json()).content.sha;
+        showToast('Synced ✓');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        const msg = err.message || `HTTP ${res.status}`;
+        showToast(`Sync failed: ${msg}`, true);
+        console.error('GitHub sync failed', res.status, err);
+      }
+    } catch (e) {
+      showToast(`Sync failed: ${e.message}`, true);
+      console.error('GitHub sync error', e);
+    }
   }
 
   /* ── Lock / Unlock ───────────────────────────────────────── */
